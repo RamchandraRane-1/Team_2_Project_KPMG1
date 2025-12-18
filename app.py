@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import altair as alt
 from openai import OpenAI
 
 # ---------------- Page Configuration ----------------
@@ -19,8 +20,7 @@ with st.sidebar:
 
     openai_key = st.text_input(
         "OpenAI API Key",
-        type="password",
-        help="Your API key is used only for this session."
+        type="password"
     )
 
     decision_objective = st.selectbox(
@@ -40,11 +40,11 @@ with st.sidebar:
 
 # ---------------- Validation ----------------
 if not openai_key:
-    st.info("Please enter your OpenAI API key to proceed.")
+    st.info("Enter OpenAI API key to continue.")
     st.stop()
 
 if uploaded_file is None:
-    st.info("Please upload a dataset containing 'Feedback' and 'Genre' columns.")
+    st.info("Upload a dataset containing 'Feedback' and 'Genre' columns.")
     st.stop()
 
 # ---------------- Load Dataset ----------------
@@ -54,52 +54,90 @@ try:
     else:
         df = pd.read_excel(uploaded_file)
 except Exception as e:
-    st.error(f"Failed to read dataset: {e}")
+    st.error(f"File read error: {e}")
     st.stop()
 
 required_cols = ["Feedback", "Genre"]
-missing_cols = [c for c in required_cols if c not in df.columns]
-
-if missing_cols:
-    st.error(f"Dataset must contain columns: {missing_cols}")
+if any(col not in df.columns for col in required_cols):
+    st.error("Dataset must contain 'Feedback' and 'Genre' columns.")
     st.stop()
 
 st.success(f"Dataset loaded successfully ({len(df)} records)")
-st.dataframe(df.head(10))
 
-# ---------------- Genre-wise Visualization ----------------
+# ---------------- KPI Section ----------------
 st.divider()
-st.subheader("Genre-wise Feedback Distribution")
+st.subheader("Executive Overview")
+
+col1, col2, col3 = st.columns(3)
+col1.metric("Total Feedback Records", len(df))
+col2.metric("Total Genres", df["Genre"].nunique())
+col3.metric("Avg Feedback Length", int(df["Feedback"].astype(str).str.len().mean()))
+
+# ---------------- Visualization 1: Genre Distribution ----------------
+st.divider()
+st.subheader("Genre-wise Feedback Volume")
 
 genre_counts = df["Genre"].value_counts().reset_index()
 genre_counts.columns = ["Genre", "Feedback Count"]
 
-st.bar_chart(
-    genre_counts.set_index("Genre")
+chart1 = alt.Chart(genre_counts).mark_bar().encode(
+    x=alt.X("Genre:N", sort="-y"),
+    y="Feedback Count:Q",
+    tooltip=["Genre", "Feedback Count"]
 )
 
-# ---------------- OpenAI Client ----------------
-client = OpenAI(api_key=openai_key)
+st.altair_chart(chart1, use_container_width=True)
 
-# ---------------- Genre-wise Feedback Selection ----------------
+# ---------------- Visualization 2: Feedback Length by Genre ----------------
+st.subheader("Average Feedback Length by Genre")
+
+df["Feedback_Length"] = df["Feedback"].astype(str).str.len()
+
+avg_len = df.groupby("Genre")["Feedback_Length"].mean().reset_index()
+
+chart2 = alt.Chart(avg_len).mark_bar(color="#4C78A8").encode(
+    x=alt.X("Genre:N", sort="-y"),
+    y="Feedback_Length:Q",
+    tooltip=["Genre", "Feedback_Length"]
+)
+
+st.altair_chart(chart2, use_container_width=True)
+
+# ---------------- Genre Selection ----------------
 st.divider()
-st.subheader("Genre-wise Behavioral Analysis")
+st.subheader("Detailed Genre-wise Feedback Analysis")
 
 selected_genre = st.selectbox(
-    "Select Genre for Deep Analysis",
+    "Select Genre",
     sorted(df["Genre"].unique())
 )
 
 genre_df = df[df["Genre"] == selected_genre]
 
-st.write(f"Feedback records for **{selected_genre}**: {len(genre_df)}")
-st.dataframe(genre_df[["Genre", "Feedback"]].head(10))
+st.markdown(f"### 📌 {selected_genre} Overview")
+st.write(f"Total feedback records: **{len(genre_df)}**")
+
+# ---------------- Visualization 3: Feedback Length Distribution ----------------
+chart3 = alt.Chart(genre_df).mark_bar().encode(
+    x=alt.X("Feedback_Length:Q", bin=alt.Bin(maxbins=30), title="Feedback Length"),
+    y=alt.Y("count()", title="Number of Feedbacks"),
+    tooltip=["count()"]
+)
+
+st.altair_chart(chart3, use_container_width=True)
+
+# ---------------- Sample Feedback ----------------
+st.subheader("Sample Feedback (Preview)")
+st.dataframe(genre_df[["Feedback"]].head(10))
+
+# ---------------- OpenAI Client ----------------
+client = OpenAI(api_key=openai_key)
 
 # ---------------- Decision Intelligence Prompt ----------------
-feedback_text = "\n".join(genre_df["Feedback"].astype(str).tolist()[:100])
+feedback_text = "\n".join(genre_df["Feedback"].astype(str).tolist()[:120])
 
 prompt = f"""
-You are a Decision Intelligence expert and behavioral analytics specialist.
+You are a Decision Intelligence expert.
 
 Decision Objective:
 {decision_objective}
@@ -110,28 +148,17 @@ Genre:
 Analyze the customer feedback below and provide:
 
 1. Behavioral Patterns Identified
-   - Repeated behaviors, emotions, or user reactions
-   - Group them into categories (Friction, Satisfaction, Churn Risk)
-
-2. Pattern Frequency & Business Risk
-   - High / Medium / Low frequency
-   - Business risk level
-
-3. Decision Mapping
-   - Recommended action
-   - Business area impacted
-   - Priority level
-
-4. Strategic Recommendations
-   - Clear, actionable steps aligned to the decision objective
+2. Pattern Frequency and Business Risk
+3. Decision Mapping (action, impacted area, priority)
+4. Strategic Recommendations aligned with the decision objective
 
 Customer Feedback:
 {feedback_text}
 """
 
-# ---------------- Run Analysis ----------------
-if st.button("Run Decision Intelligence Analysis"):
-    with st.spinner("Analyzing behavioral patterns and decision signals..."):
+# ---------------- Run AI Analysis ----------------
+if st.button("Generate Decision Intelligence Insights"):
+    with st.spinner("Analyzing behavioral patterns..."):
         try:
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
@@ -144,14 +171,15 @@ if st.button("Run Decision Intelligence Analysis"):
 
             result = response.choices[0].message.content
 
-            st.markdown("### 🧠 Decision Intelligence Output")
+            st.divider()
+            st.markdown("## 🧠 Decision Intelligence Output")
             st.markdown(result)
 
         except Exception as e:
-            st.error(f"OpenAI API Error: {e}")
+            st.error(f"OpenAI Error: {e}")
 
 # ---------------- Footer ----------------
 st.divider()
 st.caption(
-    "Decision Intelligence Analyzer | Behavioral Pattern Mining | Visual Analytics | Streamlit & OpenAI"
+    "Decision Intelligence Analyzer | Multi-Visualization Dashboard | Streamlit & OpenAI"
 )
