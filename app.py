@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from openai import OpenAI
+import matplotlib.pyplot as plt
 
 # ---------------- Page Configuration ----------------
 st.set_page_config(
@@ -10,7 +11,7 @@ st.set_page_config(
 
 st.title("Decision Intelligence Analyzer")
 st.caption(
-    "AI-Driven Behavioral Pattern Mining from Customer Feedback and Survey Responses"
+    "AI-Driven Behavioral Pattern Mining from Feedback and Survey Responses"
 )
 
 # ---------------- Sidebar ----------------
@@ -44,7 +45,7 @@ if not openai_key:
     st.stop()
 
 if uploaded_file is None:
-    st.info("Please upload a dataset containing a 'Feedback' column.")
+    st.info("Please upload a dataset containing 'Feedback' and 'Genre' columns.")
     st.stop()
 
 # ---------------- Load Dataset ----------------
@@ -57,53 +58,85 @@ except Exception as e:
     st.error(f"Failed to read dataset: {e}")
     st.stop()
 
-if "Feedback" not in df.columns:
-    st.error("Dataset must contain a column named 'Feedback'.")
+required_cols = ["Feedback", "Genre"]
+missing_cols = [c for c in required_cols if c not in df.columns]
+
+if missing_cols:
+    st.error(f"Dataset must contain columns: {missing_cols}")
     st.stop()
 
 st.success(f"Dataset loaded successfully ({len(df)} records)")
 st.dataframe(df.head(10))
 
+# ---------------- Visualizations: Genre Distribution ----------------
+st.divider()
+st.subheader("Genre-wise Feedback Distribution")
+
+genre_counts = df["Genre"].value_counts()
+
+fig, ax = plt.subplots()
+genre_counts.plot(kind="bar", ax=ax)
+ax.set_title("Number of Feedbacks by Genre")
+ax.set_xlabel("Genre")
+ax.set_ylabel("Count")
+plt.xticks(rotation=45)
+
+st.pyplot(fig)
+
 # ---------------- OpenAI Client ----------------
 client = OpenAI(api_key=openai_key)
 
-# ---------------- Analysis Section ----------------
+# ---------------- Genre-wise Feedback Selection ----------------
 st.divider()
-st.subheader("Behavioral Pattern & Decision Intelligence Analysis")
+st.subheader("Genre-wise Feedback Analysis")
 
-feedback_text = "\n".join(df["Feedback"].astype(str).tolist()[:120])
+selected_genre = st.selectbox(
+    "Select Genre for Deep Analysis",
+    sorted(df["Genre"].unique())
+)
+
+genre_df = df[df["Genre"] == selected_genre]
+
+st.write(f"Showing feedback for **{selected_genre}** ({len(genre_df)} records)")
+st.dataframe(genre_df[["Genre", "Feedback"]].head(10))
+
+# ---------------- Decision Intelligence Prompt ----------------
+feedback_text = "\n".join(genre_df["Feedback"].astype(str).tolist()[:100])
 
 prompt = f"""
-You are a Decision Intelligence expert and senior business analyst.
+You are a Decision Intelligence expert and behavioral analytics specialist.
 
 Decision Objective:
 {decision_objective}
 
-Analyze the following customer feedback and provide structured output with:
+Genre:
+{selected_genre}
+
+Analyze the customer feedback below and provide:
 
 1. Behavioral Patterns Identified
-   - Repeated behaviors, emotions, or user reactions
-   - Group them into categories (e.g., Friction, Satisfaction, Churn Risk)
+   - Repeated behaviors, frustrations, satisfaction signals
+   - Group patterns (Friction, Satisfaction, Churn Risk)
 
-2. Pattern Frequency & Risk Level
-   - Indicate whether each pattern is High / Medium / Low frequency
-   - Assign a business risk level (High / Medium / Low)
+2. Pattern Frequency & Business Risk
+   - High / Medium / Low frequency
+   - Business risk level
 
 3. Decision Mapping
-   - For each major pattern, suggest:
-     • Recommended decision/action
-     • Business area impacted
-     • Priority level
+   - Recommended action
+   - Business area impacted
+   - Priority level
 
 4. Strategic Recommendations
-   - Clear, actionable steps aligned with the decision objective
+   - Clear, decision-oriented steps aligned to the objective
 
 Customer Feedback:
 {feedback_text}
 """
 
+# ---------------- Run Analysis ----------------
 if st.button("Run Decision Intelligence Analysis"):
-    with st.spinner("Analyzing behavioral patterns and decision signals..."):
+    with st.spinner("Mining behavioral patterns and generating decision insights..."):
         try:
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
@@ -125,5 +158,5 @@ if st.button("Run Decision Intelligence Analysis"):
 # ---------------- Footer ----------------
 st.divider()
 st.caption(
-    "Decision Intelligence Analyzer | AI-Driven Behavioral Pattern Mining | Built with Streamlit & OpenAI"
+    "Decision Intelligence Analyzer | Behavioral Pattern Mining | Visual Analytics | Streamlit & OpenAI"
 )
