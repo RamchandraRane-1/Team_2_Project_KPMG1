@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 from openai import OpenAI
-import matplotlib.pyplot as plt
 
 # ---------------- Page Configuration ----------------
 st.set_page_config(
@@ -68,27 +67,23 @@ if missing_cols:
 st.success(f"Dataset loaded successfully ({len(df)} records)")
 st.dataframe(df.head(10))
 
-# ---------------- Visualizations: Genre Distribution ----------------
+# ---------------- Genre-wise Visualization ----------------
 st.divider()
 st.subheader("Genre-wise Feedback Distribution")
 
-genre_counts = df["Genre"].value_counts()
+genre_counts = df["Genre"].value_counts().reset_index()
+genre_counts.columns = ["Genre", "Feedback Count"]
 
-fig, ax = plt.subplots()
-genre_counts.plot(kind="bar", ax=ax)
-ax.set_title("Number of Feedbacks by Genre")
-ax.set_xlabel("Genre")
-ax.set_ylabel("Count")
-plt.xticks(rotation=45)
-
-st.pyplot(fig)
+st.bar_chart(
+    genre_counts.set_index("Genre")
+)
 
 # ---------------- OpenAI Client ----------------
 client = OpenAI(api_key=openai_key)
 
 # ---------------- Genre-wise Feedback Selection ----------------
 st.divider()
-st.subheader("Genre-wise Feedback Analysis")
+st.subheader("Genre-wise Behavioral Analysis")
 
 selected_genre = st.selectbox(
     "Select Genre for Deep Analysis",
@@ -97,7 +92,7 @@ selected_genre = st.selectbox(
 
 genre_df = df[df["Genre"] == selected_genre]
 
-st.write(f"Showing feedback for **{selected_genre}** ({len(genre_df)} records)")
+st.write(f"Feedback records for **{selected_genre}**: {len(genre_df)}")
 st.dataframe(genre_df[["Genre", "Feedback"]].head(10))
 
 # ---------------- Decision Intelligence Prompt ----------------
@@ -115,8 +110,8 @@ Genre:
 Analyze the customer feedback below and provide:
 
 1. Behavioral Patterns Identified
-   - Repeated behaviors, frustrations, satisfaction signals
-   - Group patterns (Friction, Satisfaction, Churn Risk)
+   - Repeated behaviors, emotions, or user reactions
+   - Group them into categories (Friction, Satisfaction, Churn Risk)
 
 2. Pattern Frequency & Business Risk
    - High / Medium / Low frequency
@@ -128,7 +123,7 @@ Analyze the customer feedback below and provide:
    - Priority level
 
 4. Strategic Recommendations
-   - Clear, decision-oriented steps aligned to the objective
+   - Clear, actionable steps aligned to the decision objective
 
 Customer Feedback:
 {feedback_text}
@@ -136,7 +131,7 @@ Customer Feedback:
 
 # ---------------- Run Analysis ----------------
 if st.button("Run Decision Intelligence Analysis"):
-    with st.spinner("Mining behavioral patterns and generating decision insights..."):
+    with st.spinner("Analyzing behavioral patterns and decision signals..."):
         try:
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
