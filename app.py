@@ -88,21 +88,6 @@ chart1 = alt.Chart(genre_counts).mark_bar().encode(
 
 st.altair_chart(chart1, use_container_width=True)
 
-# ---------------- Visualization 2: Feedback Length by Genre ----------------
-st.subheader("Average Feedback Length by Genre")
-
-df["Feedback_Length"] = df["Feedback"].astype(str).str.len()
-
-avg_len = df.groupby("Genre")["Feedback_Length"].mean().reset_index()
-
-chart2 = alt.Chart(avg_len).mark_bar(color="#4C78A8").encode(
-    x=alt.X("Genre:N", sort="-y"),
-    y="Feedback_Length:Q",
-    tooltip=["Genre", "Feedback_Length"]
-)
-
-st.altair_chart(chart2, use_container_width=True)
-
 # ---------------- Genre Selection ----------------
 st.divider()
 st.subheader("Detailed Genre-wise Feedback Analysis")
@@ -183,3 +168,4 @@ st.divider()
 st.caption(
     "Decision Intelligence Analyzer | Multi-Visualization Dashboard | Streamlit & OpenAI"
 )
+
