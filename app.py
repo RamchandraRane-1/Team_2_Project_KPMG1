@@ -4,39 +4,28 @@ import altair as alt
 from openai import OpenAI
 
 # ---------------- Page Configuration ----------------
-st.set_page_config(
-    page_title="Decision Intelligence Analyzer",
-    layout="wide"
-)
+st.set_page_config(page_title="Decision Intelligence Dashboard", layout="wide")
 
-st.title("Decision Intelligence Analyzer")
-st.caption(
-    "AI-Driven Behavioral Pattern Mining from Feedback and Survey Responses"
-)
+st.title("Decision Intelligence Dashboard")
+st.caption("AI-Driven Behavioral Pattern Mining from Customer Feedback")
 
 # ---------------- Sidebar ----------------
 with st.sidebar:
     st.header("Configuration")
 
-    openai_key = st.text_input(
-        "OpenAI API Key",
-        type="password"
-    )
+    openai_key = st.text_input("OpenAI API Key", type="password")
 
     decision_objective = st.selectbox(
         "Decision Objective",
         [
             "Improve Customer Retention",
             "Reduce Customer Complaints",
-            "Enhance Product Experience",
+            "Enhance Content Experience",
             "Improve Service Quality"
         ]
     )
 
-    uploaded_file = st.file_uploader(
-        "Upload Dataset (CSV or Excel)",
-        type=["csv", "xlsx"]
-    )
+    uploaded_file = st.file_uploader("Upload Dataset (CSV or Excel)", type=["csv", "xlsx"])
 
 # ---------------- Validation ----------------
 if not openai_key:
@@ -44,58 +33,43 @@ if not openai_key:
     st.stop()
 
 if uploaded_file is None:
-    st.info("Upload a dataset containing 'Feedback' and 'Genre' columns.")
+    st.info("Upload the Netflix feedback dataset to continue.")
     st.stop()
 
-# ---------------- Load Dataset ----------------
-try:
-    if uploaded_file.name.endswith(".csv"):
-        df = pd.read_csv(uploaded_file)
-    else:
-        df = pd.read_excel(uploaded_file)
-except Exception as e:
-    st.error(f"File read error: {e}")
-    st.stop()
+# ---------------- Load Data ----------------
+if uploaded_file.name.endswith(".csv"):
+    df = pd.read_csv(uploaded_file)
+else:
+    df = pd.read_excel(uploaded_file)
 
-required_cols = ["Feedback", "Genre"]
+required_cols = ["Feedback", "Genre", "Content Type", "Year"]
 if any(col not in df.columns for col in required_cols):
-    st.error("Dataset must contain 'Feedback' and 'Genre' columns.")
+    st.error("Dataset structure does not match expected format.")
     st.stop()
 
-st.success(f"Dataset loaded successfully ({len(df)} records)")
+st.success(f"Dataset loaded with {len(df)} records")
 
-# ---------------- OpenAI Client ----------------
-client = OpenAI(api_key=openai_key)
-
-# ---------------- Sentiment Classification (Lightweight, AI-assisted) ----------------
+# ---------------- Simple Sentiment Classification ----------------
 def classify_sentiment(text):
     text = str(text).lower()
-    if any(word in text for word in ["love", "great", "excellent", "amazing", "satisfied"]):
+    if any(w in text for w in ["great", "excellent", "amazing", "engaged", "loved"]):
         return "Positive"
-    if any(word in text for word in ["bad", "poor", "terrible", "worst", "delay", "issue"]):
+    if any(w in text for w in ["bad", "poor", "rushed", "slow", "worst", "issue"]):
         return "Negative"
     return "Neutral"
 
 df["Sentiment"] = df["Feedback"].apply(classify_sentiment)
 
-# ---------------- DASHBOARD: OVERALL SENTIMENT ----------------
+# ================= DASHBOARD =================
 st.divider()
-st.subheader("Overall Sentiment Overview")
+st.subheader("📊 Executive Dashboard")
 
-sentiment_counts = df["Sentiment"].value_counts().reset_index()
-sentiment_counts.columns = ["Sentiment", "Count"]
+col1, col2, col3 = st.columns(3)
+col1.metric("Total Feedback Records", len(df))
+col2.metric("Total Genres", df["Genre"].nunique())
+col3.metric("Content Types", df["Content Type"].nunique())
 
-chart_overall = alt.Chart(sentiment_counts).mark_bar().encode(
-    x="Sentiment:N",
-    y="Count:Q",
-    color="Sentiment:N",
-    tooltip=["Sentiment", "Count"]
-)
-
-st.altair_chart(chart_overall, use_container_width=True)
-
-# ---------------- DASHBOARD: GENRE-WISE SENTIMENT ----------------
-st.divider()
+# ---------------- Visualization 1: Genre-wise Sentiment ----------------
 st.subheader("Genre-wise Sentiment Distribution")
 
 genre_sentiment = (
@@ -104,50 +78,80 @@ genre_sentiment = (
     .reset_index(name="Count")
 )
 
-chart_genre = alt.Chart(genre_sentiment).mark_bar().encode(
+chart1 = alt.Chart(genre_sentiment).mark_bar().encode(
     x=alt.X("Genre:N", sort="-y"),
     y="Count:Q",
     color="Sentiment:N",
     tooltip=["Genre", "Sentiment", "Count"]
-).properties(height=400)
-
-st.altair_chart(chart_genre, use_container_width=True)
-
-# ---------------- GENRE SELECTION ----------------
-st.divider()
-st.subheader("Detailed Genre-wise Decision Intelligence")
-
-selected_genre = st.selectbox(
-    "Select Genre for Deep Analysis",
-    sorted(df["Genre"].unique())
 )
 
+st.altair_chart(chart1, use_container_width=True)
+
+# ---------------- Visualization 2: Content Type vs Sentiment ----------------
+st.subheader("Content Type vs Sentiment")
+
+content_sentiment = (
+    df.groupby(["Content Type", "Sentiment"])
+    .size()
+    .reset_index(name="Count")
+)
+
+chart2 = alt.Chart(content_sentiment).mark_bar().encode(
+    x="Content Type:N",
+    y="Count:Q",
+    color="Sentiment:N",
+    tooltip=["Content Type", "Sentiment", "Count"]
+)
+
+st.altair_chart(chart2, use_container_width=True)
+
+# ---------------- Visualization 3: Year-wise Sentiment Trend ----------------
+st.subheader("Year-wise Sentiment Trend")
+
+year_sentiment = (
+    df.groupby(["Year", "Sentiment"])
+    .size()
+    .reset_index(name="Count")
+)
+
+chart3 = alt.Chart(year_sentiment).mark_line(point=True).encode(
+    x="Year:O",
+    y="Count:Q",
+    color="Sentiment:N",
+    tooltip=["Year", "Sentiment", "Count"]
+)
+
+st.altair_chart(chart3, use_container_width=True)
+
+# ================= GENRE-WISE DEEP DIVE =================
+st.divider()
+st.subheader("🔍 Genre-wise Detailed Feedback Analysis")
+
+selected_genre = st.selectbox("Select Genre", sorted(df["Genre"].unique()))
 genre_df = df[df["Genre"] == selected_genre]
 
-# ---------------- GENRE-SPECIFIC SENTIMENT ----------------
-st.markdown(f"### Sentiment Distribution: {selected_genre}")
+st.write(f"Total feedback records: {len(genre_df)}")
 
-genre_sentiment_dist = (
-    genre_df["Sentiment"]
-    .value_counts()
-    .reset_index()
-)
-genre_sentiment_dist.columns = ["Sentiment", "Count"]
+# ---------------- Genre Sentiment Breakdown ----------------
+genre_sent = genre_df["Sentiment"].value_counts().reset_index()
+genre_sent.columns = ["Sentiment", "Count"]
 
-chart_genre_sent = alt.Chart(genre_sentiment_dist).mark_bar().encode(
+chart4 = alt.Chart(genre_sent).mark_bar().encode(
     x="Sentiment:N",
     y="Count:Q",
     color="Sentiment:N",
     tooltip=["Sentiment", "Count"]
 )
 
-st.altair_chart(chart_genre_sent, use_container_width=True)
+st.altair_chart(chart4, use_container_width=True)
 
-# ---------------- SAMPLE FEEDBACK ----------------
+# ---------------- Sample Feedback ----------------
 st.subheader("Representative Feedback Samples")
-st.dataframe(genre_df[["Feedback", "Sentiment"]].head(10))
+st.dataframe(genre_df[["Name", "Content Type", "Feedback", "Sentiment"]].head(10))
 
-# ---------------- DECISION INTELLIGENCE PROMPT ----------------
+# ================= DECISION INTELLIGENCE =================
+client = OpenAI(api_key=openai_key)
+
 feedback_text = "\n".join(genre_df["Feedback"].astype(str).tolist()[:120])
 
 prompt = f"""
@@ -159,39 +163,31 @@ Decision Objective:
 Genre:
 {selected_genre}
 
-Analyze the customer feedback below and provide:
+Analyze the feedback and provide:
+1. Key behavioral patterns
+2. Business risks and opportunities
+3. Decision mapping (action + priority)
+4. Strategic recommendations
 
-1. Key Behavioral Patterns (recurring behaviors and signals)
-2. Risk Assessment (business impact of these patterns)
-3. Decision Mapping (recommended actions, priority)
-4. Strategic Recommendations aligned to the objective
-
-Customer Feedback:
+Feedback:
 {feedback_text}
 """
 
-# ---------------- RUN AI ANALYSIS ----------------
 if st.button("Generate Decision Intelligence Insights"):
-    with st.spinner("Generating decision intelligence insights..."):
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "You are an expert in decision intelligence and behavioral analytics."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.3
-            )
+    with st.spinner("Generating AI-driven insights..."):
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are an expert in decision intelligence."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3
+        )
 
-            st.divider()
-            st.markdown("## 🧠 Decision Intelligence Output")
-            st.markdown(response.choices[0].message.content)
-
-        except Exception as e:
-            st.error(f"OpenAI Error: {e}")
+        st.divider()
+        st.markdown("## 🧠 Decision Intelligence Output")
+        st.markdown(response.choices[0].message.content)
 
 # ---------------- Footer ----------------
 st.divider()
-st.caption(
-    "Decision Intelligence Analyzer | AI-Driven Dashboard | Streamlit & OpenAI"
-)
+st.caption("Decision Intelligence Dashboard | Streamlit & OpenAI")
