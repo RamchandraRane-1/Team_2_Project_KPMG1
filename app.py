@@ -64,61 +64,90 @@ if any(col not in df.columns for col in required_cols):
 
 st.success(f"Dataset loaded successfully ({len(df)} records)")
 
-# ---------------- KPI Section ----------------
+# ---------------- OpenAI Client ----------------
+client = OpenAI(api_key=openai_key)
+
+# ---------------- Sentiment Classification (Lightweight, AI-assisted) ----------------
+def classify_sentiment(text):
+    text = str(text).lower()
+    if any(word in text for word in ["love", "great", "excellent", "amazing", "satisfied"]):
+        return "Positive"
+    if any(word in text for word in ["bad", "poor", "terrible", "worst", "delay", "issue"]):
+        return "Negative"
+    return "Neutral"
+
+df["Sentiment"] = df["Feedback"].apply(classify_sentiment)
+
+# ---------------- DASHBOARD: OVERALL SENTIMENT ----------------
 st.divider()
-st.subheader("Executive Overview")
+st.subheader("Overall Sentiment Overview")
 
-col1, col2, col3 = st.columns(3)
-col1.metric("Total Feedback Records", len(df))
-col2.metric("Total Genres", df["Genre"].nunique())
-col3.metric("Avg Feedback Length", int(df["Feedback"].astype(str).str.len().mean()))
+sentiment_counts = df["Sentiment"].value_counts().reset_index()
+sentiment_counts.columns = ["Sentiment", "Count"]
 
-# ---------------- Visualization 1: Genre Distribution ----------------
-st.divider()
-st.subheader("Genre-wise Feedback Volume")
-
-genre_counts = df["Genre"].value_counts().reset_index()
-genre_counts.columns = ["Genre", "Feedback Count"]
-
-chart1 = alt.Chart(genre_counts).mark_bar().encode(
-    x=alt.X("Genre:N", sort="-y"),
-    y="Feedback Count:Q",
-    tooltip=["Genre", "Feedback Count"]
+chart_overall = alt.Chart(sentiment_counts).mark_bar().encode(
+    x="Sentiment:N",
+    y="Count:Q",
+    color="Sentiment:N",
+    tooltip=["Sentiment", "Count"]
 )
 
-st.altair_chart(chart1, use_container_width=True)
+st.altair_chart(chart_overall, use_container_width=True)
 
-# ---------------- Genre Selection ----------------
+# ---------------- DASHBOARD: GENRE-WISE SENTIMENT ----------------
 st.divider()
-st.subheader("Detailed Genre-wise Feedback Analysis")
+st.subheader("Genre-wise Sentiment Distribution")
+
+genre_sentiment = (
+    df.groupby(["Genre", "Sentiment"])
+    .size()
+    .reset_index(name="Count")
+)
+
+chart_genre = alt.Chart(genre_sentiment).mark_bar().encode(
+    x=alt.X("Genre:N", sort="-y"),
+    y="Count:Q",
+    color="Sentiment:N",
+    tooltip=["Genre", "Sentiment", "Count"]
+).properties(height=400)
+
+st.altair_chart(chart_genre, use_container_width=True)
+
+# ---------------- GENRE SELECTION ----------------
+st.divider()
+st.subheader("Detailed Genre-wise Decision Intelligence")
 
 selected_genre = st.selectbox(
-    "Select Genre",
+    "Select Genre for Deep Analysis",
     sorted(df["Genre"].unique())
 )
 
 genre_df = df[df["Genre"] == selected_genre]
 
-st.markdown(f"### 📌 {selected_genre} Overview")
-st.write(f"Total feedback records: **{len(genre_df)}**")
+# ---------------- GENRE-SPECIFIC SENTIMENT ----------------
+st.markdown(f"### Sentiment Distribution: {selected_genre}")
 
-# ---------------- Visualization 3: Feedback Length Distribution ----------------
-chart3 = alt.Chart(genre_df).mark_bar().encode(
-    x=alt.X("Feedback_Length:Q", bin=alt.Bin(maxbins=30), title="Feedback Length"),
-    y=alt.Y("count()", title="Number of Feedbacks"),
-    tooltip=["count()"]
+genre_sentiment_dist = (
+    genre_df["Sentiment"]
+    .value_counts()
+    .reset_index()
+)
+genre_sentiment_dist.columns = ["Sentiment", "Count"]
+
+chart_genre_sent = alt.Chart(genre_sentiment_dist).mark_bar().encode(
+    x="Sentiment:N",
+    y="Count:Q",
+    color="Sentiment:N",
+    tooltip=["Sentiment", "Count"]
 )
 
-st.altair_chart(chart3, use_container_width=True)
+st.altair_chart(chart_genre_sent, use_container_width=True)
 
-# ---------------- Sample Feedback ----------------
-st.subheader("Sample Feedback (Preview)")
-st.dataframe(genre_df[["Feedback"]].head(10))
+# ---------------- SAMPLE FEEDBACK ----------------
+st.subheader("Representative Feedback Samples")
+st.dataframe(genre_df[["Feedback", "Sentiment"]].head(10))
 
-# ---------------- OpenAI Client ----------------
-client = OpenAI(api_key=openai_key)
-
-# ---------------- Decision Intelligence Prompt ----------------
+# ---------------- DECISION INTELLIGENCE PROMPT ----------------
 feedback_text = "\n".join(genre_df["Feedback"].astype(str).tolist()[:120])
 
 prompt = f"""
@@ -132,18 +161,18 @@ Genre:
 
 Analyze the customer feedback below and provide:
 
-1. Behavioral Patterns Identified
-2. Pattern Frequency and Business Risk
-3. Decision Mapping (action, impacted area, priority)
-4. Strategic Recommendations aligned with the decision objective
+1. Key Behavioral Patterns (recurring behaviors and signals)
+2. Risk Assessment (business impact of these patterns)
+3. Decision Mapping (recommended actions, priority)
+4. Strategic Recommendations aligned to the objective
 
 Customer Feedback:
 {feedback_text}
 """
 
-# ---------------- Run AI Analysis ----------------
+# ---------------- RUN AI ANALYSIS ----------------
 if st.button("Generate Decision Intelligence Insights"):
-    with st.spinner("Analyzing behavioral patterns..."):
+    with st.spinner("Generating decision intelligence insights..."):
         try:
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
@@ -154,11 +183,9 @@ if st.button("Generate Decision Intelligence Insights"):
                 temperature=0.3
             )
 
-            result = response.choices[0].message.content
-
             st.divider()
             st.markdown("## 🧠 Decision Intelligence Output")
-            st.markdown(result)
+            st.markdown(response.choices[0].message.content)
 
         except Exception as e:
             st.error(f"OpenAI Error: {e}")
@@ -166,6 +193,5 @@ if st.button("Generate Decision Intelligence Insights"):
 # ---------------- Footer ----------------
 st.divider()
 st.caption(
-    "Decision Intelligence Analyzer | Multi-Visualization Dashboard | Streamlit & OpenAI"
+    "Decision Intelligence Analyzer | AI-Driven Dashboard | Streamlit & OpenAI"
 )
-
